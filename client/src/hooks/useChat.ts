@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Message, ChatSession, ConversationMemory, VoiceSettings } from '../types'
 import { ZegoService } from '../services/zego'
 import { agentAPI } from '../services/api'
@@ -56,7 +56,7 @@ export const useChat = () => {
       
       setSession(newSession)
       setIsConnected(true)
-      setupMessageHandlers()
+      setupMessageHandlers(conv)
       
       return true
     } catch (error) {
@@ -67,22 +67,50 @@ export const useChat = () => {
     }
   }, [initializeConversation])
 
-  const setupMessageHandlers = useCallback(() => {
+  const setupMessageHandlers = useCallback((conv: ConversationMemory) => {
     zegoService.current.onRoomMessage((data: any) => {
-      if (data.Cmd === 4 && conversation) {
-        const messageId = data.Data.MessageId
-        const content = data.Data.Text
-        const isComplete = data.Data.EndFlag
+      const { Cmd, Data: msgData } = data
+      
+      if (Cmd === 3) {
+        // ASR Result - User speech recognition
+        const { Text: transcript, EndFlag } = msgData
+        if (transcript && EndFlag) {
+          setCurrentTranscript('')
+        } else if (transcript) {
+          setCurrentTranscript(transcript)
+        }
+      } else if (Cmd === 4) {
+        // LLM Result - AI response
+        const { Text: content, MessageId: messageId, EndFlag } = msgData
+        
+        if (!content) return
 
         setMessages(prev => {
           const existing = prev.find(m => m.id === messageId)
           
           if (existing) {
-            return prev.map(m => 
+            const updated = prev.map(m => 
               m.id === messageId 
-                ? { ...m, content, isStreaming: !isComplete }
+                ? { ...m, content, isStreaming: !EndFlag }
                 : m
             )
+            
+            if (EndFlag) {
+              const finalMessage: Message = {
+                id: messageId,
+                content,
+                sender: 'ai',
+                timestamp: Date.now(),
+                type: 'text'
+              }
+              memoryService.addMessage(conv.id, finalMessage)
+              
+              if (session?.voiceSettings.autoPlay && session.voiceSettings.isEnabled) {
+                voiceService.speak(content, session.voiceSettings)
+              }
+            }
+            
+            return updated
           } else {
             const aiMessage: Message = {
               id: messageId,
@@ -90,27 +118,22 @@ export const useChat = () => {
               sender: 'ai',
               timestamp: Date.now(),
               type: 'text',
-              isStreaming: !isComplete
+              isStreaming: !EndFlag
             }
+            
+            if (EndFlag) {
+              memoryService.addMessage(conv.id, aiMessage)
+              if (session?.voiceSettings.autoPlay && session.voiceSettings.isEnabled) {
+                voiceService.speak(content, session.voiceSettings)
+              }
+            }
+            
             return [...prev, aiMessage]
           }
         })
-
-        if (isComplete && session?.voiceSettings.autoPlay) {
-          const finalMessage: Message = {
-            id: messageId,
-            content,
-            sender: 'ai',
-            timestamp: Date.now(),
-            type: 'text'
-          }
-          
-          memoryService.addMessage(conversation.id, finalMessage)
-          voiceService.speak(content, session.voiceSettings)
-        }
       }
     })
-  }, [conversation, session])
+  }, [session])
 
   const sendTextMessage = useCallback(async (content: string) => {
     if (!session?.agentInstanceId || !conversation) return
@@ -198,6 +221,14 @@ export const useChat = () => {
       console.error('Failed to end session:', error)
     }
   }, [session, isRecording, stopVoiceRecording])
+
+  useEffect(() => {
+    return () => {
+      if (session) {
+        endSession()
+      }
+    }
+  }, [])
 
   return {
     messages,

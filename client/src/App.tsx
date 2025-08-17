@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChatContainer } from './components/Chat/ChatContainer'
 import { ConversationList } from './components/Memory/ConversationList'
@@ -33,9 +33,9 @@ function App() {
     }
   }
 
-  const refreshConversations = () => {
+  const refreshConversations = useCallback(() => {
     setConversations(memoryService.getAllConversations())
-  }
+  }, [])
 
   return (
     <div className="flex h-screen bg-gray-900">

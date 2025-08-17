@@ -11,7 +11,6 @@ export const agentAPI = {
     const response = await api.post('/api/start', {
       room_id: roomId,
       user_id: userId,
-      user_stream_id: `${userId}_stream`,
     })
     return response.data
   },

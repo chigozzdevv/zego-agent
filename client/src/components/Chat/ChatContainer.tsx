@@ -56,6 +56,13 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
       animate={{ opacity: 1 }}
       className="flex flex-col h-full bg-gray-50"
     >
+      <audio 
+        id="ai-audio-output" 
+        autoPlay 
+        style={{ display: 'none' }}
+        controls={false}
+      />
+
       <motion.div 
         initial={{ y: -20 }}
         animate={{ y: 0 }}
