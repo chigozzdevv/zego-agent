@@ -25,25 +25,22 @@ let REGISTERED_AGENT_ID: string | null = null
 
 function generateZegoSignature(action: string) {
   const timestamp = Math.floor(Date.now() / 1000)
-  const nonce = crypto.randomBytes(16).toString('hex')
+  const nonce = crypto.randomBytes(8).toString('hex')
   
-  const params: any = {
+  const appId = CONFIG.ZEGO_APP_ID
+  const serverSecret = CONFIG.ZEGO_SERVER_SECRET
+  
+  const signString = appId + nonce + serverSecret + timestamp
+  const signature = crypto.createHash('md5').update(signString).digest('hex')
+  
+  return {
     Action: action,
-    AppId: CONFIG.ZEGO_APP_ID,
+    AppId: appId,
     SignatureNonce: nonce,
     SignatureVersion: '2.0',
-    Timestamp: timestamp
+    Timestamp: timestamp,
+    Signature: signature
   }
-  
-  const sortedKeys = Object.keys(params).sort()
-  const signString = sortedKeys.map(key => `${key}=${params[key]}`).join('&')
-  
-  const signature = crypto
-    .createHmac('sha256', CONFIG.ZEGO_SERVER_SECRET)
-    .update(signString)
-    .digest('hex')
-  
-  return { ...params, Signature: signature }
 }
 
 async function makeZegoRequest(action: string, body: object = {}): Promise<any> {
