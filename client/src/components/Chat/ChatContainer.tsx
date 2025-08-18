@@ -9,9 +9,10 @@ import { Phone, PhoneOff, Bot } from 'lucide-react'
 interface ChatContainerProps {
   conversationId?: string
   onConversationUpdate?: () => void
+  onNewConversation?: () => void
 }
 
-export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatContainerProps) => {
+export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConversation }: ChatContainerProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { 
     messages, 
@@ -19,12 +20,15 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
     isConnected, 
     isRecording,
     currentTranscript,
+    agentStatus,
     session,
+    conversation,
     startSession, 
     sendTextMessage, 
     toggleVoiceRecording,
     toggleVoiceSettings,
-    endSession 
+    endSession,
+    resetConversation
   } = useChat()
 
   const scrollToBottom = () => {
@@ -41,12 +45,65 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
     }
   }, [messages, onConversationUpdate])
 
+  useEffect(() => {
+    if (conversationId !== conversation?.id) {
+      if (isConnected) {
+        endSession().then(() => {
+          if (conversationId) {
+            startSession(conversationId)
+          } else {
+            resetConversation()
+          }
+        })
+      } else if (conversationId) {
+        startSession(conversationId)
+      } else {
+        resetConversation()
+      }
+    }
+  }, [conversationId, conversation?.id, isConnected])
+
   const handleStartChat = async () => {
     const success = await startSession(conversationId)
-    if (success) {
-      setTimeout(() => {
-        sendTextMessage("Hello! I'd like to start chatting with you.")
-      }, 1000)
+    if (success && onNewConversation && !conversationId) {
+      onNewConversation()
+    }
+  }
+
+  const handleEndChat = async () => {
+    await endSession()
+    if (onNewConversation) {
+      onNewConversation()
+    }
+  }
+
+  const getStatusText = () => {
+    if (!isConnected) return 'Click Start Chat to begin'
+    
+    switch (agentStatus) {
+      case 'listening':
+        return 'Listening for your voice...'
+      case 'thinking':
+        return 'AI is processing your message...'
+      case 'speaking':
+        return 'AI is responding...'
+      default:
+        return 'Connected - Ready to chat'
+    }
+  }
+
+  const getStatusColor = () => {
+    if (!isConnected) return 'text-gray-500'
+    
+    switch (agentStatus) {
+      case 'listening':
+        return 'text-green-600'
+      case 'thinking':
+        return 'text-blue-600'
+      case 'speaking':
+        return 'text-purple-600'
+      default:
+        return 'text-green-600'
     }
   }
 
@@ -75,14 +132,14 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
             </div>
             <div>
               <h1 className="text-xl font-semibold text-gray-900">AI Assistant</h1>
-              <p className="text-sm text-gray-500">
-                {isConnected ? 'Connected and ready to chat' : 'Ready to start conversation'}
+              <p className={`text-sm ${getStatusColor()}`}>
+                {getStatusText()}
               </p>
             </div>
           </div>
           
           {isConnected ? (
-            <Button onClick={endSession} variant="secondary" size="sm">
+            <Button onClick={handleEndChat} variant="secondary" size="sm" disabled={isLoading}>
               <PhoneOff className="w-4 h-4 mr-2" />
               End Chat
             </Button>
@@ -96,7 +153,7 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
       </motion.div>
 
       <div className="flex-1 overflow-y-auto px-4 py-6">
-        {messages.length === 0 && !isConnected && (
+        {messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -105,14 +162,28 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
             <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Welcome to AI Assistant</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {isConnected ? 'Ready to Chat' : 'Welcome to AI Assistant'}
+            </h3>
             <p className="text-gray-600 mb-6 max-w-md">
-              Start a conversation with our AI assistant. You can type messages or use voice input for a more natural experience.
+              {isConnected 
+                ? 'You can type messages or use voice input to start chatting with the AI assistant.'
+                : 'Start a conversation with our AI assistant. You can type messages or use voice input for a more natural experience.'
+              }
             </p>
-            <Button onClick={handleStartChat} isLoading={isLoading}>
-              <Phone className="w-4 h-4 mr-2" />
-              Start New Conversation
-            </Button>
+            {!isConnected && (
+              <div className="space-y-2 text-sm text-gray-500 mb-6">
+                <p>🎤 Voice conversations with real-time responses</p>
+                <p>💬 Natural interruption support</p>
+                <p>🧠 Context-aware conversations</p>
+              </div>
+            )}
+            {!isConnected && (
+              <Button onClick={handleStartChat} isLoading={isLoading}>
+                <Phone className="w-4 h-4 mr-2" />
+                Start New Conversation
+              </Button>
+            )}
           </motion.div>
         )}
 
@@ -125,6 +196,32 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
             />
           ))}
         </AnimatePresence>
+        
+        {agentStatus === 'thinking' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="flex justify-start mb-6"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-800 rounded-full flex items-center justify-center">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <div className="bg-white border border-gray-200 rounded-2xl px-5 py-3">
+                <div className="flex items-center space-x-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  </div>
+                  <span className="text-sm text-gray-500">AI is thinking...</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -137,6 +234,7 @@ export const ChatContainer = ({ conversationId, onConversationUpdate }: ChatCont
           isConnected={isConnected}
           voiceEnabled={session?.voiceSettings.isEnabled || false}
           onToggleVoice={toggleVoiceSettings}
+          agentStatus={agentStatus}
         />
       )}
     </motion.div>

@@ -8,6 +8,8 @@ export class ZegoService {
   private isInitialized = false
   private currentRoomId: string | null = null
   private currentUserId: string | null = null
+  private localStream: any = null
+  private isJoining = false
 
   static getInstance(): ZegoService {
     if (!ZegoService.instance) {
@@ -17,15 +19,24 @@ export class ZegoService {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) return
+    if (this.isInitialized || this.isJoining) return
 
-    this.zg = new ZegoExpressEngine(
-      parseInt(config.ZEGO_APP_ID), 
-      config.ZEGO_SERVER
-    )
-    
-    this.setupEventListeners()
-    this.isInitialized = true
+    this.isJoining = true
+    try {
+      this.zg = new ZegoExpressEngine(
+        parseInt(config.ZEGO_APP_ID), 
+        config.ZEGO_SERVER
+      )
+      
+      this.setupEventListeners()
+      this.isInitialized = true
+      console.log('✅ ZEGO initialized successfully')
+    } catch (error) {
+      console.error('❌ ZEGO initialization failed:', error)
+      throw error
+    } finally {
+      this.isJoining = false
+    }
   }
 
   private setupEventListeners(): void {
@@ -36,6 +47,7 @@ export class ZegoService {
       if (method === 'onRecvRoomChannelMessage') {
         try {
           const message = JSON.parse(content.msgContent)
+          console.log('🎯 Room message received:', message)
           this.handleRoomMessage(message)
         } catch (error) {
           console.error('Failed to parse room message:', error)
@@ -44,29 +56,46 @@ export class ZegoService {
     })
 
     this.zg.on('roomStreamUpdate', async (_roomID: string, updateType: string, streamList: any[]) => {
+      console.log('📡 Stream update:', updateType, streamList.length, 'streams')
+      
       if (updateType === 'ADD' && streamList.length > 0) {
         for (const stream of streamList) {
           try {
+            console.log('🔗 Playing agent stream:', stream.streamID)
             const mediaStream = await this.zg!.startPlayingStream(stream.streamID)
             if (mediaStream) {
               const remoteView = await this.zg!.createRemoteStreamView(mediaStream)
               if (remoteView) {
-                const audioElement = document.getElementById('ai-audio-output')
+                const audioElement = document.getElementById('ai-audio-output') as HTMLAudioElement
                 if (audioElement) {
-                  remoteView.play(audioElement as any, { enableAutoplayDialog: false })
+                  remoteView.play(audioElement, { 
+                    enableAutoplayDialog: false,
+                    muted: false
+                  })
+                  console.log('✅ AI agent audio connected')
                 }
               }
             }
           } catch (error) {
-            console.error('Failed to play agent stream:', error)
+            console.error('❌ Failed to play agent stream:', error)
           }
         }
+      } else if (updateType === 'DELETE') {
+        console.log('📴 Agent stream disconnected')
       }
     })
 
     this.zg.on('roomUserUpdate', (_roomID: string, updateType: string, userList: any[]) => {
-      if (updateType === 'ADD') {
-        console.log('Users joined:', userList)
+      console.log('👥 Room user update:', updateType, userList.length, 'users')
+    })
+
+    this.zg.on('roomStateChanged', (roomID: string, reason: string, errorCode: number) => {
+      console.log('🏠 Room state changed:', { roomID, reason, errorCode })
+    })
+
+    this.zg.on('networkQuality', (userID: string, upstreamQuality: number, downstreamQuality: number) => {
+      if (upstreamQuality > 2 || downstreamQuality > 2) {
+        console.warn('📶 Network quality issues:', { userID, upstreamQuality, downstreamQuality })
       }
     })
   }
@@ -80,51 +109,126 @@ export class ZegoService {
   }
 
   async joinRoom(roomId: string, userId: string): Promise<boolean> {
-    if (!this.zg) throw new Error('ZEGO not initialized')
+    if (!this.zg) {
+      console.error('❌ ZEGO not initialized')
+      return false
+    }
+
+    if (this.currentRoomId === roomId && this.currentUserId === userId) {
+      console.log('ℹ️ Already in the same room')
+      return true
+    }
 
     try {
+      if (this.currentRoomId) {
+        console.log('🔄 Leaving previous room before joining new one')
+        await this.leaveRoom()
+      }
+
       this.currentRoomId = roomId
       this.currentUserId = userId
 
-      // Get token from backend
+      console.log('🔑 Getting token for user:', userId)
       const { token } = await agentAPI.getToken(userId)
 
+      console.log('🚪 Logging into room:', roomId)
       await this.zg.loginRoom(roomId, token, {
         userID: userId,
         userName: userId
       })
 
+      console.log('📢 Enabling room message reception')
       this.zg.callExperimentalAPI({ 
         method: 'onRecvRoomChannelMessage', 
         params: {} 
       })
 
+      console.log('🎤 Creating local stream')
       const localStream = await this.zg.createZegoStream({
-        camera: { video: false, audio: true }
+        camera: { 
+          video: false, 
+          audio: true 
+        }
       })
 
       if (localStream) {
-        await this.zg.startPublishingStream(`${userId}_stream`, localStream, {
+        this.localStream = localStream
+        const streamId = `${userId}_stream`
+        
+        console.log('📤 Publishing stream:', streamId)
+        await this.zg.startPublishingStream(streamId, localStream, {
           enableAutoSwitchVideoCodec: true
         })
+        
+        console.log('✅ Room joined successfully')
+        return true
+      } else {
+        throw new Error('Failed to create local stream')
       }
-
-      return true
     } catch (error) {
-      console.error('Failed to join room:', error)
+      console.error('❌ Failed to join room:', error)
+      this.currentRoomId = null
+      this.currentUserId = null
+      return false
+    }
+  }
+
+  async enableMicrophone(enabled: boolean): Promise<boolean> {
+    if (!this.zg || !this.localStream) {
+      console.warn('⚠️ Cannot toggle microphone: no stream available')
+      return false
+    }
+
+    try {
+      if (this.localStream.getAudioTracks) {
+        const audioTrack = this.localStream.getAudioTracks()[0]
+        if (audioTrack) {
+          audioTrack.enabled = enabled
+          console.log(`🎤 Microphone ${enabled ? 'enabled' : 'disabled'}`)
+          return true
+        }
+      }
+      
+      console.warn('⚠️ No audio track found in local stream')
+      return false
+    } catch (error) {
+      console.error('❌ Failed to toggle microphone:', error)
       return false
     }
   }
 
   async leaveRoom(): Promise<void> {
-    if (this.zg && this.currentRoomId) {
-      try {
-        await this.zg.logoutRoom()
-        this.currentRoomId = null
-        this.currentUserId = null
-      } catch (error) {
-        console.error('Failed to leave room:', error)
+    if (!this.zg || !this.currentRoomId) {
+      console.log('ℹ️ No room to leave')
+      return
+    }
+
+    try {
+      console.log('🚪 Leaving room:', this.currentRoomId)
+      
+      if (this.currentUserId && this.localStream) {
+        const streamId = `${this.currentUserId}_stream`
+        console.log('📤 Stopping stream publication:', streamId)
+        await this.zg.stopPublishingStream(streamId)
       }
+      
+      if (this.localStream) {
+        console.log('🗑️ Destroying local stream')
+        this.zg.destroyStream(this.localStream)
+        this.localStream = null
+      }
+      
+      await this.zg.logoutRoom()
+      
+      this.currentRoomId = null
+      this.currentUserId = null
+      
+      console.log('✅ Left room successfully')
+    } catch (error) {
+      console.error('❌ Failed to leave room:', error)
+      this.currentRoomId = null
+      this.currentUserId = null
+      this.localStream = null
     }
   }
 
@@ -142,5 +246,18 @@ export class ZegoService {
 
   getEngine(): ZegoExpressEngine | null {
     return this.zg
+  }
+
+  isInRoom(): boolean {
+    return !!this.currentRoomId && !!this.currentUserId
+  }
+
+  destroy(): void {
+    if (this.zg) {
+      this.leaveRoom()
+      this.zg = null
+      this.isInitialized = false
+      console.log('🗑️ ZEGO service destroyed')
+    }
   }
 }

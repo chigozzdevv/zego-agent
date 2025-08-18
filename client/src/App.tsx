@@ -9,33 +9,56 @@ import { Button } from './components/UI/Button'
 
 function App() {
   const [conversations, setConversations] = useState<ConversationMemory[]>([])
-  const [currentConversationId, setCurrentConversationId] = useState<string>()
+  const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     setConversations(memoryService.getAllConversations())
   }, [])
 
-  const handleNewConversation = () => {
+  const handleNewConversation = useCallback(() => {
     setCurrentConversationId(undefined)
-  }
-
-  const handleSelectConversation = (id: string) => {
-    setCurrentConversationId(id)
     setSidebarOpen(false)
-  }
+  }, [])
 
-  const handleDeleteConversation = (id: string) => {
+  const handleSelectConversation = useCallback((id: string) => {
+    if (id !== currentConversationId) {
+      setCurrentConversationId(id)
+    }
+    setSidebarOpen(false)
+  }, [currentConversationId])
+
+  const handleDeleteConversation = useCallback((id: string) => {
     memoryService.deleteConversation(id)
-    setConversations(memoryService.getAllConversations())
+    const updatedConversations = memoryService.getAllConversations()
+    setConversations(updatedConversations)
+    
     if (currentConversationId === id) {
       setCurrentConversationId(undefined)
     }
-  }
+  }, [currentConversationId])
 
   const refreshConversations = useCallback(() => {
-    setConversations(memoryService.getAllConversations())
-  }, [])
+    const updatedConversations = memoryService.getAllConversations()
+    setConversations(updatedConversations)
+    
+    if (!currentConversationId && updatedConversations.length > 0) {
+      const latestConv = updatedConversations[0]
+      setCurrentConversationId(latestConv.id)
+    }
+  }, [currentConversationId])
+
+  const handleConversationCreated = useCallback(() => {
+    const latestConversations = memoryService.getAllConversations()
+    setConversations(latestConversations)
+    
+    if (latestConversations.length > 0) {
+      const newestConv = latestConversations[0]
+      if (newestConv.id !== currentConversationId) {
+        setCurrentConversationId(newestConv.id)
+      }
+    }
+  }, [currentConversationId])
 
   return (
     <div className="flex h-screen bg-gray-900">
@@ -68,6 +91,7 @@ function App() {
                     size="sm"
                     onClick={handleNewConversation}
                     className="text-blue-600 hover:bg-blue-50"
+                    title="New Conversation"
                   >
                     <Plus className="w-4 h-4" />
                   </Button>
@@ -108,6 +132,7 @@ function App() {
             size="sm"
             onClick={handleNewConversation}
             className="text-blue-600"
+            title="New Conversation"
           >
             <Plus className="w-5 h-5" />
           </Button>
@@ -115,8 +140,10 @@ function App() {
 
         <div className="flex-1">
           <ChatContainer
+            key={currentConversationId || 'new'}
             conversationId={currentConversationId}
             onConversationUpdate={refreshConversations}
+            onNewConversation={handleConversationCreated}
           />
         </div>
       </div>
