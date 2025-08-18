@@ -129,7 +129,7 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
       RTC: {
         RoomId: room_id,
         AgentUserId: `agent_${room_id}`,
-        StreamId: `agent_stream_${room_id}`
+        AgentStreamId: `agent_stream_${room_id}`
       },
       MessageHistory: {
         SyncMode: 1,
@@ -160,7 +160,7 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
       success: true,
       agentInstanceId: result.Data?.AgentInstanceId,
       agentUserId: instanceConfig.RTC.AgentUserId,
-      agentStreamId: instanceConfig.RTC.StreamId
+      agentStreamId: instanceConfig.RTC.AgentStreamId
     })
     
   } catch (error: any) {
