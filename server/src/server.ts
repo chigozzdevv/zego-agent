@@ -39,8 +39,8 @@ function generateZegoSignature(action: string) {
   const signString = sortedKeys.map(key => `${key}=${params[key]}`).join('&')
   
   const signature = crypto
-    .createHash('sha1')
-    .update(CONFIG.ZEGO_SERVER_SECRET + signString)
+    .createHmac('sha256', CONFIG.ZEGO_SERVER_SECRET)
+    .update(signString)
     .digest('hex')
   
   return { ...params, Signature: signature }
