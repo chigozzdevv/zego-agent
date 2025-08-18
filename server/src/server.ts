@@ -69,36 +69,36 @@ async function registerAgent(): Promise<string> {
   const agentId = `agent_${Date.now()}`
   const agentConfig = {
     AgentId: agentId,
-    AgentConfig: {
-      Name: 'AI Assistant',
-      LLM: {
-        Url: 'POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-        ApiKey: CONFIG.DASHSCOPE_API_KEY || 'zego_test',
-        Model: 'qwen-plus',
-        SystemPrompt: 'You are a helpful AI assistant. Be concise and friendly.',
-        Temperature: 0.7,
-        TopP: 0.9,
-        Params: { max_tokens: 300 }
-      },
-      TTS: {
-        Vendor: 'CosyVoice',
-        Params: {
-          app: { 
-            api_key: CONFIG.DASHSCOPE_API_KEY || 'zego_test'
-          },
-          payload: {
-            model: 'cosyvoice-v2',
-            parameters: {
-              voice: 'longxiaochun_v2'
-            }
+    Name: 'AI Assistant',
+    LLM: {
+      Url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+      ApiKey: CONFIG.DASHSCOPE_API_KEY || 'zego_test',
+      Model: 'qwen-plus',
+      SystemPrompt: 'You are a helpful AI assistant. Be concise and friendly. Respond in the same language as the user.',
+      Temperature: 0.7,
+      TopP: 0.9,
+      Params: { 
+        max_tokens: 300
+      }
+    },
+    TTS: {
+      Vendor: 'CosyVoice',
+      Params: {
+        app: { 
+          api_key: CONFIG.DASHSCOPE_API_KEY || 'zego_test'
+        },
+        payload: {
+          model: 'cosyvoice-v2',
+          parameters: {
+            voice: 'longxiaochun_v2'
           }
         }
-      },
-      ASR: {
-        HotWord: 'ZEGOCLOUD|10,AI|8,Assistant|8',
-        VADSilenceSegmentation: 800,
-        PauseInterval: 1200
       }
+    },
+    ASR: {
+      HotWord: 'ZEGOCLOUD|10,AI|8,Assistant|8',
+      VADSilenceSegmentation: 800,
+      PauseInterval: 1200
     }
   }
   
