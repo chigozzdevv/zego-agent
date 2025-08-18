@@ -71,7 +71,7 @@ async function registerAgent(): Promise<string> {
     AgentId: agentId,
     Name: 'AI Assistant',
     LLM: {
-      Url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+      Url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
       ApiKey: CONFIG.DASHSCOPE_API_KEY || 'zego_test',
       Model: 'qwen-plus',
       SystemPrompt: 'You are a helpful AI assistant. Be concise and friendly. Respond in the same language as the user.',
