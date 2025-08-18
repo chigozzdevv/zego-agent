@@ -2,7 +2,6 @@ export interface Config {
   ZEGO_APP_ID: string
   ZEGO_SERVER_SECRET: string
   ZEGO_API_BASE_URL: string
-  OPENAI_API_KEY: string
   DASHSCOPE_API_KEY: string
   PORT: number
   PROXY_AUTH: string
@@ -36,29 +35,17 @@ export interface LLMConfig {
   SystemPrompt: string
   Temperature: number
   TopP: number
-  Params: {
-    max_tokens: number
-  }
+  Params: { max_tokens: number }
 }
 
 export interface TTSConfig {
   Vendor: string
-  Url?: string
-  TerminatorText?: string
-  Params:
-    | {
-        app: { api_key: string }
-        payload: {
-          model: string
-          parameters: { voice: string; [k: string]: any }
-          [k: string]: any
-        }
-      }
-    | {
-        app: { api_key: string }
-        voice: string
-        encoding: string
-      }
+  Url: string
+  Params: {
+    app: { api_key: string }
+    voice: string
+    encoding: string
+  }
 }
 
 export interface ASRConfig {
@@ -91,38 +78,11 @@ export interface InstanceConfig {
   AdvancedConfig: { InterruptMode: number }
 }
 
-export interface StartSessionRequest {
-  room_id: string
-  user_id: string
-}
+export interface StartSessionRequest { room_id: string; user_id: string }
+export interface SendMessageRequest { agent_instance_id: string; message: string }
+export interface StopSessionRequest { agent_instance_id: string }
 
-export interface SendMessageRequest {
-  agent_instance_id: string
-  message: string
-}
-
-export interface StopSessionRequest {
-  agent_instance_id: string
-}
-
-export interface TTSRequest {
-  text: string
-  voice?: string
-  encoding?: string
-}
-
-export interface OpenAIMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-export interface OpenAIRequest {
-  model: string
-  messages: OpenAIMessage[]
-  temperature?: number
-  max_tokens?: number
-  stream?: boolean
-}
+export interface TTSRequest { text: string; voice?: string; encoding?: string }
 
 export interface CallbackData {
   Event: string
@@ -135,10 +95,4 @@ export interface CallbackData {
   Timestamp?: number
 }
 
-export interface TokenRequest {
-  user_id: string
-}
-
-export interface TokenResponse {
-  token: string
-}
+export interface TokenResponse { token: string }
