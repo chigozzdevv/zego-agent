@@ -114,7 +114,7 @@ async function registerAgent(): Promise<string> {
 
 app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { room_id, user_id } = req.body
+    const { room_id, user_id, user_stream_id } = req.body
     
     if (!room_id || !user_id) {
       res.status(400).json({ error: 'room_id and user_id required' })
@@ -123,13 +123,18 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
     
     const agentId = await registerAgent()
     
+    const userStreamId = user_stream_id || `${user_id}_stream`
+    const agentUserId = `agent_${room_id}`
+    const agentStreamId = `agent_stream_${room_id}`
+    
     const instanceConfig = {
       AgentId: agentId,
       UserId: user_id,
       RTC: {
         RoomId: room_id,
-        AgentUserId: `agent_${room_id}`,
-        AgentStreamId: `agent_stream_${room_id}`
+        AgentUserId: agentUserId,
+        AgentStreamId: agentStreamId,
+        UserStreamId: userStreamId
       },
       MessageHistory: {
         SyncMode: 1,
@@ -159,8 +164,9 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
     res.json({
       success: true,
       agentInstanceId: result.Data?.AgentInstanceId,
-      agentUserId: instanceConfig.RTC.AgentUserId,
-      agentStreamId: instanceConfig.RTC.AgentStreamId
+      agentUserId: agentUserId,
+      agentStreamId: agentStreamId,
+      userStreamId: userStreamId
     })
     
   } catch (error: any) {
@@ -281,4 +287,4 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction): void =>
 
 app.listen(CONFIG.PORT, () => {
   console.log(`Server running on port ${CONFIG.PORT}`)
-})
+}) 
