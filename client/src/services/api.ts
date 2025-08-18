@@ -125,10 +125,10 @@ export const agentAPI = {
       const response = await api.post('/api/stop', requestData)
       
       if (!response.data || !response.data.success) {
-        throw new Error(response.data?.error || 'Session stop failed')
+        console.warn('⚠️ Session stop returned non-success:', response.data)
+      } else {
+        console.log('✅ Session stopped successfully')
       }
-      
-      console.log('✅ Session stopped successfully')
     } catch (error: any) {
       console.error('❌ Stop session failed:', error.response?.data || error.message)
       throw new Error(error.response?.data?.error || error.message || 'Failed to stop session')
@@ -155,6 +155,21 @@ export const agentAPI = {
     } catch (error: any) {
       console.error('❌ Get token failed:', error.response?.data || error.message)
       throw new Error(error.response?.data?.error || error.message || 'Failed to get token')
+    }
+  },
+
+  async healthCheck(): Promise<{ status: string }> {
+    try {
+      console.log('🏥 Checking backend health')
+      
+      const response = await api.get('/health')
+      
+      console.log('✅ Backend health check successful:', response.data)
+      
+      return response.data
+    } catch (error: any) {
+      console.error('❌ Backend health check failed:', error.response?.data || error.message)
+      throw new Error(error.response?.data?.error || error.message || 'Backend health check failed')
     }
   }
 }

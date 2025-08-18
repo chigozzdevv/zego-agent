@@ -4,7 +4,7 @@ import { Send, Mic, MicOff, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '../UI/Button'
 
 interface VoiceMessageInputProps {
-  onSendMessage: (content: string) => void
+  onSendMessage: (content: string) => Promise<void>
   isRecording: boolean
   onToggleRecording: () => void
   currentTranscript: string

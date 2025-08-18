@@ -68,9 +68,15 @@ class MemoryService {
     const conversation = this.conversations.get(conversationId)
     if (!conversation) return
 
-    conversation.messages.push(message)
+    const existingIndex = conversation.messages.findIndex(m => m.id === message.id)
+    if (existingIndex >= 0) {
+      conversation.messages[existingIndex] = message
+    } else {
+      conversation.messages.push(message)
+    }
+
     conversation.updatedAt = Date.now()
-    conversation.metadata.totalMessages++
+    conversation.metadata.totalMessages = conversation.messages.length
 
     if (message.sender === 'ai') {
       conversation.metadata.lastAIResponse = message.content
@@ -78,6 +84,26 @@ class MemoryService {
 
     if (conversation.messages.length === 1 && message.sender === 'user') {
       conversation.title = message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
+    }
+
+    this.saveToStorage()
+  }
+
+  deleteMessage(conversationId: string, messageId: string): void {
+    const conversation = this.conversations.get(conversationId)
+    if (!conversation) return
+
+    conversation.messages = conversation.messages.filter(m => m.id !== messageId)
+    conversation.updatedAt = Date.now()
+    conversation.metadata.totalMessages = conversation.messages.length
+
+    if (conversation.messages.length > 0) {
+      const lastAIMessage = conversation.messages
+        .filter(m => m.sender === 'ai')
+        .pop()
+      conversation.metadata.lastAIResponse = lastAIMessage?.content || ''
+    } else {
+      conversation.metadata.lastAIResponse = ''
     }
 
     this.saveToStorage()
@@ -94,6 +120,19 @@ class MemoryService {
 
   deleteConversation(conversationId: string): void {
     this.conversations.delete(conversationId)
+    this.saveToStorage()
+  }
+
+  updateConversation(conversationId: string, updates: Partial<ConversationMemory>): void {
+    const conversation = this.conversations.get(conversationId)
+    if (!conversation) return
+
+    Object.assign(conversation, updates, { updatedAt: Date.now() })
+    this.saveToStorage()
+  }
+
+  clearAllConversations(): void {
+    this.conversations.clear()
     this.saveToStorage()
   }
 

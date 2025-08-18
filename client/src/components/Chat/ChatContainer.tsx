@@ -46,21 +46,24 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
   }, [messages, onConversationUpdate])
 
   useEffect(() => {
-    if (conversationId !== conversation?.id) {
-      if (isConnected) {
-        endSession().then(() => {
+    const handleConversationChange = async () => {
+      if (conversationId !== conversation?.id) {
+        if (isConnected) {
+          await endSession()
           if (conversationId) {
-            startSession(conversationId)
+            await startSession(conversationId)
           } else {
             resetConversation()
           }
-        })
-      } else if (conversationId) {
-        startSession(conversationId)
-      } else {
-        resetConversation()
+        } else if (conversationId) {
+          await startSession(conversationId)
+        } else {
+          resetConversation()
+        }
       }
     }
+
+    handleConversationChange()
   }, [conversationId, conversation?.id, isConnected])
 
   const handleStartChat = async () => {

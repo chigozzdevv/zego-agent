@@ -1,21 +1,114 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef, useEffect, useReducer } from 'react'
 import type { Message, ChatSession, ConversationMemory, VoiceSettings } from '../types'
 import { ZegoService } from '../services/zego'
 import { agentAPI } from '../services/api'
 import { memoryService } from '../services/memory'
 
+interface ChatState {
+  messages: Message[]
+  session: ChatSession | null
+  conversation: ConversationMemory | null
+  isLoading: boolean
+  isConnected: boolean
+  isRecording: boolean
+  currentTranscript: string
+  agentStatus: 'idle' | 'listening' | 'thinking' | 'speaking'
+  error: string | null
+}
+
+type ChatAction = 
+  | { type: 'SET_MESSAGES'; payload: Message[] }
+  | { type: 'ADD_MESSAGE'; payload: Message }
+  | { type: 'UPDATE_MESSAGE'; payload: { id: string; updates: Partial<Message> } }
+  | { type: 'SET_SESSION'; payload: ChatSession | null }
+  | { type: 'SET_CONVERSATION'; payload: ConversationMemory | null }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_CONNECTED'; payload: boolean }
+  | { type: 'SET_RECORDING'; payload: boolean }
+  | { type: 'SET_TRANSCRIPT'; payload: string }
+  | { type: 'SET_AGENT_STATUS'; payload: 'idle' | 'listening' | 'thinking' | 'speaking' }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'RESET_CHAT' }
+
+const initialState: ChatState = {
+  messages: [],
+  session: null,
+  conversation: null,
+  isLoading: false,
+  isConnected: false,
+  isRecording: false,
+  currentTranscript: '',
+  agentStatus: 'idle',
+  error: null
+}
+
+function chatReducer(state: ChatState, action: ChatAction): ChatState {
+  switch (action.type) {
+    case 'SET_MESSAGES':
+      return { ...state, messages: action.payload }
+    
+    case 'ADD_MESSAGE':
+      const exists = state.messages.some(m => m.id === action.payload.id)
+      if (exists) {
+        return {
+          ...state,
+          messages: state.messages.map(m => 
+            m.id === action.payload.id ? action.payload : m
+          )
+        }
+      }
+      return { ...state, messages: [...state.messages, action.payload] }
+    
+    case 'UPDATE_MESSAGE':
+      return {
+        ...state,
+        messages: state.messages.map(m => 
+          m.id === action.payload.id ? { ...m, ...action.payload.updates } : m
+        )
+      }
+    
+    case 'SET_SESSION':
+      return { ...state, session: action.payload }
+    
+    case 'SET_CONVERSATION':
+      return { ...state, conversation: action.payload }
+    
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload }
+    
+    case 'SET_CONNECTED':
+      return { ...state, isConnected: action.payload }
+    
+    case 'SET_RECORDING':
+      return { ...state, isRecording: action.payload }
+    
+    case 'SET_TRANSCRIPT':
+      return { ...state, currentTranscript: action.payload }
+    
+    case 'SET_AGENT_STATUS':
+      return { ...state, agentStatus: action.payload }
+    
+    case 'SET_ERROR':
+      return { ...state, error: action.payload }
+    
+    case 'RESET_CHAT':
+      return {
+        ...initialState,
+        isLoading: state.isLoading
+      }
+    
+    default:
+      return state
+  }
+}
+
 export const useChat = () => {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [session, setSession] = useState<ChatSession | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [currentTranscript, setCurrentTranscript] = useState('')
-  const [conversation, setConversation] = useState<ConversationMemory | null>(null)
-  const [agentStatus, setAgentStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle')
+  const [state, dispatch] = useReducer(chatReducer, initialState)
   
   const zegoService = useRef(ZegoService.getInstance())
   const processedMessageIds = useRef(new Set<string>())
+  const messageHandlerSetup = useRef(false)
+  const cleanupFunctions = useRef<(() => void)[]>([])
 
   const defaultVoiceSettings: VoiceSettings = {
     isEnabled: true,
@@ -24,83 +117,77 @@ export const useChat = () => {
     speechPitch: 1.0,
   }
 
-  const initializeConversation = useCallback((conversationId?: string) => {
-    const conv = memoryService.createOrGetConversation(conversationId)
-    setConversation(conv)
-    setMessages(conv.messages)
+  const cleanup = useCallback(() => {
+    cleanupFunctions.current.forEach(fn => fn())
+    cleanupFunctions.current = []
     processedMessageIds.current.clear()
-    return conv
+    messageHandlerSetup.current = false
+  }, [])
+
+  const addMessageSafely = useCallback((message: Message, conversationId: string) => {
+    if (processedMessageIds.current.has(message.id)) {
+      console.log('Skipping duplicate message:', message.id)
+      return
+    }
+
+    processedMessageIds.current.add(message.id)
+    dispatch({ type: 'ADD_MESSAGE', payload: message })
+    
+    try {
+      memoryService.addMessage(conversationId, message)
+    } catch (error) {
+      console.error('Failed to save message to memory:', error)
+    }
+  }, [])
+
+  const initializeConversation = useCallback((conversationId?: string) => {
+    try {
+      const conv = memoryService.createOrGetConversation(conversationId)
+      dispatch({ type: 'SET_CONVERSATION', payload: conv })
+      dispatch({ type: 'SET_MESSAGES', payload: [...conv.messages] })
+      processedMessageIds.current.clear()
+      
+      conv.messages.forEach(msg => {
+        processedMessageIds.current.add(msg.id)
+      })
+      
+      dispatch({ type: 'SET_ERROR', payload: null })
+      return conv
+    } catch (error) {
+      console.error('Failed to initialize conversation:', error)
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load conversation' })
+      return null
+    }
   }, [])
 
   const resetConversation = useCallback(() => {
-    setMessages([])
-    setConversation(null)
-    setCurrentTranscript('')
-    setAgentStatus('idle')
-    processedMessageIds.current.clear()
-  }, [])
-
-  const startSession = useCallback(async (existingConversationId?: string): Promise<boolean> => {
-    setIsLoading(true)
-    try {
-      if (session?.isActive) {
-        await endSession()
-      }
-
-      const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-
-      await zegoService.current.initialize()
-      const joinResult = await zegoService.current.joinRoom(roomId, userId)
-      
-      if (!joinResult) throw new Error('Failed to join room')
-
-      const result = await agentAPI.startSession(roomId, userId)
-      console.log('🎯 Session started:', result)
-      
-      const conv = initializeConversation(existingConversationId)
-      
-      const newSession: ChatSession = {
-        roomId,
-        userId,
-        agentInstanceId: result.agentInstanceId,
-        isActive: true,
-        conversationId: conv.id,
-        voiceSettings: defaultVoiceSettings
-      }
-      
-      setSession(newSession)
-      setIsConnected(true)
-      setupMessageHandlers(conv)
-      
-      return true
-    } catch (error) {
-      console.error('Failed to start session:', error)
-      return false
-    } finally {
-      setIsLoading(false)
-    }
-  }, [initializeConversation])
+    cleanup()
+    dispatch({ type: 'RESET_CHAT' })
+  }, [cleanup])
 
   const setupMessageHandlers = useCallback((conv: ConversationMemory) => {
-    zegoService.current.onRoomMessage((data: any) => {
-      const { Cmd, Data: msgData } = data
-      console.log('🎯 Room message received:', { Cmd, Data: msgData })
-      
-      if (Cmd === 3) {
-        // ASR Result - Display only, don't send to API
-        const { Text: transcript, EndFlag, MessageId } = msgData
+    if (messageHandlerSetup.current) {
+      console.log('Message handlers already setup')
+      return
+    }
+
+    console.log('Setting up message handlers for conversation:', conv.id)
+    messageHandlerSetup.current = true
+
+    const handleRoomMessage = (data: any) => {
+      try {
+        const { Cmd, Data: msgData } = data
+        console.log('Room message received:', { Cmd, msgData })
         
-        if (transcript) {
-          setCurrentTranscript(transcript)
-          setAgentStatus('listening')
+        if (Cmd === 3) {
+          const { Text: transcript, EndFlag, MessageId } = msgData
           
-          // When user finishes speaking, just save the message for display
-          if (EndFlag && transcript.trim()) {
-            const messageId = MessageId || `voice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+          if (transcript && transcript.trim()) {
+            dispatch({ type: 'SET_TRANSCRIPT', payload: transcript })
+            dispatch({ type: 'SET_AGENT_STATUS', payload: 'listening' })
             
-            if (!processedMessageIds.current.has(messageId)) {
-              processedMessageIds.current.add(messageId)
+            if (EndFlag) {
+              const messageId = MessageId || `voice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
               
               const userMessage: Message = {
                 id: messageId,
@@ -111,65 +198,123 @@ export const useChat = () => {
                 transcript: transcript.trim()
               }
               
-              setMessages(prev => {
-                const exists = prev.some(m => m.id === messageId)
-                if (exists) return prev
-                return [...prev, userMessage]
-              })
-              
-              memoryService.addMessage(conv.id, userMessage)
-              setCurrentTranscript('')
-              setAgentStatus('thinking')
+              addMessageSafely(userMessage, conv.id)
+              dispatch({ type: 'SET_TRANSCRIPT', payload: '' })
+              dispatch({ type: 'SET_AGENT_STATUS', payload: 'thinking' })
             }
           }
-        }
-      } else if (Cmd === 4) {
-        // LLM Result - AI response
-        const { Text: content, MessageId, EndFlag } = msgData
-        if (!content || !MessageId) return
+        } else if (Cmd === 4) {
+          const { Text: content, MessageId, EndFlag } = msgData
+          if (!content || !MessageId) return
 
-        setMessages(prev => {
-          const existing = prev.find(m => m.id === MessageId)
-          
-          if (existing) {
-            return prev.map(m => 
-              m.id === MessageId 
-                ? { ...m, content, isStreaming: !EndFlag }
-                : m
-            )
-          } else {
+          if (EndFlag) {
             const aiMessage: Message = {
               id: MessageId,
               content,
               sender: 'ai',
               timestamp: Date.now(),
-              type: 'text',
-              isStreaming: !EndFlag
+              type: 'text'
             }
-            return [...prev, aiMessage]
+            
+            addMessageSafely(aiMessage, conv.id)
+            dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
+          } else {
+            dispatch({ type: 'UPDATE_MESSAGE', payload: {
+              id: MessageId,
+              updates: { content, isStreaming: true }
+            }})
+            
+            if (!processedMessageIds.current.has(MessageId)) {
+              const streamingMessage: Message = {
+                id: MessageId,
+                content,
+                sender: 'ai',
+                timestamp: Date.now(),
+                type: 'text',
+                isStreaming: true
+              }
+              
+              processedMessageIds.current.add(MessageId)
+              dispatch({ type: 'ADD_MESSAGE', payload: streamingMessage })
+            }
+            
+            dispatch({ type: 'SET_AGENT_STATUS', payload: 'speaking' })
           }
-        })
-
-        if (EndFlag) {
-          setAgentStatus('idle')
-          const finalMessage: Message = {
-            id: MessageId,
-            content,
-            sender: 'ai',
-            timestamp: Date.now(),
-            type: 'text'
-          }
-          memoryService.addMessage(conv.id, finalMessage)
-        } else {
-          setAgentStatus('speaking')
         }
+      } catch (error) {
+        console.error('Error handling room message:', error)
       }
-    })
-  }, [])
+    }
 
-  // Text messages still use the API
+    zegoService.current.onRoomMessage(handleRoomMessage)
+    
+    cleanupFunctions.current.push(() => {
+      zegoService.current.onRoomMessage(() => {})
+    })
+  }, [addMessageSafely])
+
+  const startSession = useCallback(async (existingConversationId?: string): Promise<boolean> => {
+    if (state.isLoading || state.isConnected) {
+      console.log('Session start blocked - already loading or connected')
+      return false
+    }
+    
+    dispatch({ type: 'SET_LOADING', payload: true })
+    dispatch({ type: 'SET_ERROR', payload: null })
+    
+    try {
+      if (state.session?.isActive) {
+        console.log('Ending existing session before starting new one')
+        await endSession()
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+
+      const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+
+      console.log('Initializing ZEGO service...')
+      await zegoService.current.initialize()
+      
+      console.log('Joining room:', roomId)
+      const joinResult = await zegoService.current.joinRoom(roomId, userId)
+      if (!joinResult) throw new Error('Failed to join ZEGO room')
+
+      console.log('Starting AI agent session...')
+      const result = await agentAPI.startSession(roomId, userId)
+      
+      const conv = initializeConversation(existingConversationId)
+      if (!conv) throw new Error('Failed to initialize conversation')
+      
+      const newSession: ChatSession = {
+        roomId,
+        userId,
+        agentInstanceId: result.agentInstanceId,
+        isActive: true,
+        conversationId: conv.id,
+        voiceSettings: defaultVoiceSettings
+      }
+      
+      dispatch({ type: 'SET_SESSION', payload: newSession })
+      dispatch({ type: 'SET_CONNECTED', payload: true })
+      
+      setupMessageHandlers(conv)
+      
+      console.log('Session started successfully')
+      return true
+    } catch (error) {
+      console.error('Failed to start session:', error)
+      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to start session' })
+      return false
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false })
+    }
+  }, [state.isLoading, state.isConnected, state.session, initializeConversation, setupMessageHandlers])
+
   const sendTextMessage = useCallback(async (content: string) => {
-    if (!session?.agentInstanceId || !conversation) return
+    if (!state.session?.agentInstanceId || !state.conversation) {
+      dispatch({ type: 'SET_ERROR', payload: 'No active session' })
+      return
+    }
 
     const trimmedContent = content.trim()
     if (!trimmedContent) return
@@ -185,102 +330,107 @@ export const useChat = () => {
         type: 'text'
       }
       
-      setMessages(prev => [...prev, userMessage])
-      memoryService.addMessage(conversation.id, userMessage)
-      setAgentStatus('thinking')
+      addMessageSafely(userMessage, state.conversation.id)
+      dispatch({ type: 'SET_AGENT_STATUS', payload: 'thinking' })
       
-      console.log('📤 Sending text message via API')
-      await agentAPI.sendMessage(session.agentInstanceId, trimmedContent)
+      await agentAPI.sendMessage(state.session.agentInstanceId, trimmedContent)
+      
     } catch (error) {
       console.error('Failed to send message:', error)
-      setAgentStatus('idle')
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to send message' })
+      dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
     }
-  }, [session, conversation])
+  }, [state.session, state.conversation, addMessageSafely])
 
-  // Voice recording just enables/disables microphone - no API calls
   const toggleVoiceRecording = useCallback(async () => {
-    if (!isConnected) return
+    if (!state.isConnected) return
     
     try {
-      if (isRecording) {
-        console.log('🎤 Stopping voice recording')
+      if (state.isRecording) {
         await zegoService.current.enableMicrophone(false)
-        setIsRecording(false)
-        setAgentStatus('idle')
+        dispatch({ type: 'SET_RECORDING', payload: false })
+        dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
       } else {
-        console.log('🎤 Starting voice recording')
         const success = await zegoService.current.enableMicrophone(true)
         if (success) {
-          setIsRecording(true)
-          setAgentStatus('listening')
+          dispatch({ type: 'SET_RECORDING', payload: true })
+          dispatch({ type: 'SET_AGENT_STATUS', payload: 'listening' })
         }
       }
     } catch (error) {
       console.error('Failed to toggle recording:', error)
-      setIsRecording(false)
-      setAgentStatus('idle')
+      dispatch({ type: 'SET_RECORDING', payload: false })
+      dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
     }
-  }, [isRecording, isConnected])
+  }, [state.isConnected, state.isRecording])
 
   const toggleVoiceSettings = useCallback(() => {
-    if (session) {
-      setSession({
-        ...session,
+    if (state.session) {
+      const updatedSession = {
+        ...state.session,
         voiceSettings: {
-          ...session.voiceSettings,
-          isEnabled: !session.voiceSettings.isEnabled
+          ...state.session.voiceSettings,
+          isEnabled: !state.session.voiceSettings.isEnabled
         }
-      })
+      }
+      dispatch({ type: 'SET_SESSION', payload: updatedSession })
     }
-  }, [session])
+  }, [state.session])
 
   const endSession = useCallback(async () => {
-    if (!session) return
+    if (!state.session && !state.isConnected) return
     
     try {
-      if (isRecording) {
+      dispatch({ type: 'SET_LOADING', payload: true })
+      
+      if (state.isRecording) {
         await zegoService.current.enableMicrophone(false)
-        setIsRecording(false)
+        dispatch({ type: 'SET_RECORDING', payload: false })
       }
       
-      if (session.agentInstanceId) {
-        await agentAPI.stopSession(session.agentInstanceId)
+      if (state.session?.agentInstanceId) {
+        await agentAPI.stopSession(state.session.agentInstanceId)
       }
       
       await zegoService.current.leaveRoom()
       
-      setSession(null)
-      setIsConnected(false)
-      setAgentStatus('idle')
-      setCurrentTranscript('')
+      cleanup()
+      dispatch({ type: 'SET_SESSION', payload: null })
+      dispatch({ type: 'SET_CONNECTED', payload: false })
+      dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
+      dispatch({ type: 'SET_TRANSCRIPT', payload: '' })
+      dispatch({ type: 'SET_ERROR', payload: null })
+      
+      console.log('Session ended successfully')
     } catch (error) {
       console.error('Failed to end session:', error)
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false })
     }
-  }, [session, isRecording])
+  }, [state.session, state.isConnected, state.isRecording, cleanup])
+
+  const clearError = useCallback(() => {
+    dispatch({ type: 'SET_ERROR', payload: null })
+  }, [])
 
   useEffect(() => {
     return () => {
-      if (session?.isActive) {
+      if (state.session?.isActive || state.isConnected) {
         endSession()
       }
+      cleanup()
     }
   }, [])
 
   return {
-    messages,
-    session,
-    conversation,
-    isLoading,
-    isConnected,
-    isRecording,
-    currentTranscript,
-    agentStatus,
+    ...state,
     startSession,
     sendTextMessage,
     toggleVoiceRecording,
     toggleVoiceSettings,
     endSession,
     initializeConversation,
-    resetConversation
+    resetConversation,
+    clearError
   }
 }
