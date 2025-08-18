@@ -28,7 +28,8 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
     toggleVoiceRecording,
     toggleVoiceSettings,
     endSession,
-    resetConversation
+    resetConversation,
+    initializeConversation
   } = useChat()
 
   const scrollToBottom = () => {
@@ -45,26 +46,14 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
     }
   }, [messages, onConversationUpdate])
 
+  // Initialize conversation when conversationId changes
   useEffect(() => {
-    const handleConversationChange = async () => {
-      if (conversationId !== conversation?.id) {
-        if (isConnected) {
-          await endSession()
-          if (conversationId) {
-            await startSession(conversationId)
-          } else {
-            resetConversation()
-          }
-        } else if (conversationId) {
-          await startSession(conversationId)
-        } else {
-          resetConversation()
-        }
-      }
+    if (conversationId && conversationId !== conversation?.id) {
+      initializeConversation(conversationId)
+    } else if (!conversationId && conversation) {
+      resetConversation()
     }
-
-    handleConversationChange()
-  }, [conversationId, conversation?.id, isConnected])
+  }, [conversationId, conversation?.id, initializeConversation, resetConversation])
 
   const handleStartChat = async () => {
     const success = await startSession(conversationId)
@@ -121,6 +110,10 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
         autoPlay 
         style={{ display: 'none' }}
         controls={false}
+        playsInline
+        muted={false}
+        volume={0.8}
+        preload="auto"
       />
 
       <motion.div 

@@ -12,7 +12,7 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024) // Desktop open by default
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
-  const [lastUpdate, setLastUpdate] = useState(0)
+
 
   // Load conversations on mount and set up periodic refresh
   useEffect(() => {
@@ -20,7 +20,7 @@ function App() {
       try {
         const allConversations = memoryService.getAllConversations()
         setConversations(allConversations)
-        setLastUpdate(Date.now())
+        // setLastUpdate(Date.now())
       } catch (error) {
         console.error('Failed to load conversations:', error)
       }
@@ -28,14 +28,13 @@ function App() {
     
     loadConversations()
     
-    // Refresh conversations every 3 seconds when there are active conversations
     const interval = setInterval(() => {
       const current = memoryService.getAllConversations()
       if (current.length !== conversations.length || 
           current.some((conv, index) => conv.updatedAt !== conversations[index]?.updatedAt)) {
         loadConversations()
       }
-    }, 3000)
+    }, 5000) 
     
     return () => clearInterval(interval)
   }, [conversations.length])
@@ -44,7 +43,7 @@ function App() {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 1024) {
-        setSidebarOpen(true) // Always show on desktop
+        setSidebarOpen(true)
       }
     }
 
@@ -93,7 +92,7 @@ function App() {
         setCurrentConversationId(undefined)
       }
       
-      setLastUpdate(Date.now())
+      // setLastUpdate(Date.now())
     } catch (error) {
       console.error('Failed to delete conversation:', error)
     }
@@ -103,7 +102,7 @@ function App() {
     try {
       const updatedConversations = memoryService.getAllConversations()
       setConversations(updatedConversations)
-      setLastUpdate(Date.now())
+      // setLastUpdate(Date.now())
     } catch (error) {
       console.error('Failed to refresh conversations:', error)
     }
@@ -122,7 +121,7 @@ function App() {
         }
       }
       
-      setLastUpdate(Date.now())
+      // setLastUpdate(Date.now())
     } catch (error) {
       console.error('Failed to handle conversation creation:', error)
     }
@@ -213,7 +212,7 @@ function App() {
             {/* Sidebar Footer */}
             <div className="p-4 border-t border-gray-200 bg-gray-50">
               <p className="text-xs text-gray-500 text-center">
-                Last updated: {new Date(lastUpdate).toLocaleTimeString()}
+                {conversations.length} conversations
               </p>
             </div>
           </motion.div>
@@ -280,10 +279,10 @@ function App() {
           </div>
         )}
 
-        {/* Chat Container */}
+        {/* Chat Container - FIXED: Only use conversationId in key */}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
-            key={`${currentConversationId || 'new'}-${lastUpdate}`}
+            key={currentConversationId || 'new'}
             conversationId={currentConversationId}
             onConversationUpdate={refreshConversations}
             onNewConversation={handleConversationCreated}

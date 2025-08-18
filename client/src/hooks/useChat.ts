@@ -109,6 +109,7 @@ export const useChat = () => {
   const processedMessageIds = useRef(new Set<string>())
   const messageHandlerSetup = useRef(false)
   const cleanupFunctions = useRef<(() => void)[]>([])
+  const currentConversationRef = useRef<string | null>(null)
 
   const defaultVoiceSettings: VoiceSettings = {
     isEnabled: true,
@@ -152,6 +153,7 @@ export const useChat = () => {
       })
       
       dispatch({ type: 'SET_ERROR', payload: null })
+      currentConversationRef.current = conv.id
       return conv
     } catch (error) {
       console.error('Failed to initialize conversation:', error)
@@ -163,6 +165,7 @@ export const useChat = () => {
   const resetConversation = useCallback(() => {
     cleanup()
     dispatch({ type: 'RESET_CHAT' })
+    currentConversationRef.current = null
   }, [cleanup])
 
   const setupMessageHandlers = useCallback((conv: ConversationMemory) => {
@@ -178,6 +181,12 @@ export const useChat = () => {
       try {
         const { Cmd, Data: msgData } = data
         console.log('Room message received:', { Cmd, msgData })
+        
+        // Only process messages for current conversation
+        if (currentConversationRef.current !== conv.id) {
+          console.log('Ignoring message for different conversation')
+          return
+        }
         
         if (Cmd === 3) {
           const { Text: transcript, EndFlag, MessageId } = msgData
@@ -400,6 +409,7 @@ export const useChat = () => {
       dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
       dispatch({ type: 'SET_TRANSCRIPT', payload: '' })
       dispatch({ type: 'SET_ERROR', payload: null })
+      currentConversationRef.current = null
       
       console.log('Session ended successfully')
     } catch (error) {
@@ -412,6 +422,27 @@ export const useChat = () => {
   const clearError = useCallback(() => {
     dispatch({ type: 'SET_ERROR', payload: null })
   }, [])
+
+  // Simplified effect to handle conversation changes
+  useEffect(() => {
+    const handleConversationChange = async () => {
+      // Only act if there's an actual change in conversation ID
+      if (currentConversationRef.current === (state.conversation?.id || null)) {
+        return
+      }
+
+      if (state.isConnected) {
+        await endSession()
+        if (state.conversation?.id) {
+          await startSession(state.conversation.id)
+        } else {
+          resetConversation()
+        }
+      }
+    }
+
+    handleConversationChange()
+  }, [state.conversation?.id])
 
   useEffect(() => {
     return () => {

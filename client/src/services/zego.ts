@@ -10,6 +10,7 @@ export class ZegoService {
   private currentUserId: string | null = null
   private localStream: any = null
   private isJoining = false
+  private audioElement: HTMLAudioElement | null = null
 
   static getInstance(): ZegoService {
     if (!ZegoService.instance) {
@@ -29,6 +30,7 @@ export class ZegoService {
       )
       
       this.setupEventListeners()
+      this.setupAudioElement()
       this.isInitialized = true
       console.log('✅ ZEGO initialized successfully')
     } catch (error) {
@@ -37,6 +39,40 @@ export class ZegoService {
     } finally {
       this.isJoining = false
     }
+  }
+
+  private setupAudioElement(): void {
+    // Create or get audio element for AI voice output
+    this.audioElement = document.getElementById('ai-audio-output') as HTMLAudioElement
+    if (!this.audioElement) {
+      this.audioElement = document.createElement('audio')
+      this.audioElement.id = 'ai-audio-output'
+      this.audioElement.autoplay = true
+      this.audioElement.controls = false
+      this.audioElement.style.display = 'none'
+      document.body.appendChild(this.audioElement)
+    }
+
+    // Ensure audio can play
+    this.audioElement.volume = 0.8
+    this.audioElement.muted = false
+
+    // Handle audio events
+    this.audioElement.addEventListener('loadstart', () => {
+      console.log('🔊 Audio loading started')
+    })
+
+    this.audioElement.addEventListener('canplay', () => {
+      console.log('🔊 Audio ready to play')
+    })
+
+    this.audioElement.addEventListener('play', () => {
+      console.log('🔊 Audio playback started')
+    })
+
+    this.audioElement.addEventListener('error', (e) => {
+      console.error('❌ Audio error:', e)
+    })
   }
 
   private setupEventListeners(): void {
@@ -62,17 +98,38 @@ export class ZegoService {
         for (const stream of streamList) {
           try {
             console.log('🔗 Playing agent stream:', stream.streamID)
+            
+            // Start playing the stream
             const mediaStream = await this.zg!.startPlayingStream(stream.streamID)
             if (mediaStream) {
+              console.log('✅ Media stream received:', mediaStream)
+              
+              // Create remote view and connect to audio element
               const remoteView = await this.zg!.createRemoteStreamView(mediaStream)
-              if (remoteView) {
-                const audioElement = document.getElementById('ai-audio-output') as HTMLAudioElement
-                if (audioElement) {
-                  remoteView.play(audioElement, { 
+              if (remoteView && this.audioElement) {
+                try {
+                  await remoteView.play(this.audioElement, { 
                     enableAutoplayDialog: false,
                     muted: false
                   })
-                  console.log('✅ AI agent audio connected')
+                  console.log('✅ AI agent audio connected and playing')
+                  
+                  // Ensure audio is not muted
+                  this.audioElement.muted = false
+                  this.audioElement.volume = 0.8
+                } catch (playError) {
+                  console.error('❌ Failed to play audio through element:', playError)
+                  
+                  // Fallback: try to play directly
+                  try {
+                    if (this.audioElement) {
+                      this.audioElement.srcObject = mediaStream
+                      await this.audioElement.play()
+                      console.log('✅ Fallback audio play successful')
+                    }
+                  } catch (fallbackError) {
+                    console.error('❌ Fallback audio play failed:', fallbackError)
+                  }
                 }
               }
             }
@@ -82,6 +139,9 @@ export class ZegoService {
         }
       } else if (updateType === 'DELETE') {
         console.log('📴 Agent stream disconnected')
+        if (this.audioElement) {
+          this.audioElement.srcObject = null
+        }
       }
     })
 
@@ -97,6 +157,14 @@ export class ZegoService {
       if (upstreamQuality > 2 || downstreamQuality > 2) {
         console.warn('📶 Network quality issues:', { userID, upstreamQuality, downstreamQuality })
       }
+    })
+
+    this.zg.on('publisherStateUpdate', (result: any) => {
+      console.log('📤 Publisher state update:', result)
+    })
+
+    this.zg.on('playerStateUpdate', (result: any) => {
+      console.log('📥 Player state update:', result)
     })
   }
 
@@ -143,11 +211,11 @@ export class ZegoService {
         params: {} 
       })
 
-      console.log('🎤 Creating local stream')
+      console.log('🎤 Creating local stream with enhanced audio settings')
       const localStream = await this.zg.createZegoStream({
         camera: { 
           video: false, 
-          audio: true 
+          audio: true // ZEGO handles audio processing internally
         }
       })
 
@@ -220,6 +288,11 @@ export class ZegoService {
       
       await this.zg.logoutRoom()
       
+      // Clean up audio
+      if (this.audioElement) {
+        this.audioElement.srcObject = null
+      }
+      
       this.currentRoomId = null
       this.currentUserId = null
       
@@ -257,6 +330,10 @@ export class ZegoService {
       this.leaveRoom()
       this.zg = null
       this.isInitialized = false
+      if (this.audioElement && this.audioElement.parentNode) {
+        this.audioElement.parentNode.removeChild(this.audioElement)
+        this.audioElement = null
+      }
       console.log('🗑️ ZEGO service destroyed')
     }
   }

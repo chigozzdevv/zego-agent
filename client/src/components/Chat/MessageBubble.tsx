@@ -21,9 +21,10 @@ export const MessageBubble = ({ message, onPlayVoice, showTimestamp = false }: M
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 group`}
+      className={`flex w-full mb-6 group ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      <div className={`flex items-end space-x-3 max-w-lg ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`}>
+      <div className={`flex items-end space-x-3 max-w-[75%] ${isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}>
+        {/* Avatar */}
         <motion.div 
           whileHover={{ scale: 1.05 }}
           className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-md ${
@@ -39,18 +40,20 @@ export const MessageBubble = ({ message, onPlayVoice, showTimestamp = false }: M
           )}
         </motion.div>
         
+        {/* Message Content */}
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           <motion.div
-            className={`px-5 py-3 rounded-2xl shadow-sm ${
+            className={`px-4 py-3 rounded-2xl shadow-sm break-words ${
               isUser 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-white text-gray-900 border border-gray-200'
+                ? 'bg-blue-600 text-white rounded-br-md' 
+                : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
             } ${message.isStreaming ? 'animate-pulse' : ''} ${
               isVoice ? 'border-2 border-dashed border-purple-300' : ''
             }`}
             layout
             whileHover={{ scale: 1.02 }}
           >
+            {/* Voice indicator */}
             {isVoice && (
               <div className={`flex items-center space-x-2 mb-2 ${
                 isUser ? 'text-blue-200' : 'text-purple-600'
@@ -63,10 +66,12 @@ export const MessageBubble = ({ message, onPlayVoice, showTimestamp = false }: M
               </div>
             )}
             
+            {/* Message text */}
             <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {isVoice ? message.transcript || message.content : message.content}
             </p>
             
+            {/* Voice playback button */}
             {isVoice && message.audioUrl && (
               <button 
                 onClick={() => onPlayVoice?.(message.id)}
@@ -80,12 +85,15 @@ export const MessageBubble = ({ message, onPlayVoice, showTimestamp = false }: M
             )}
           </motion.div>
           
+          {/* Timestamp */}
           {showTimestamp && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex items-center space-x-1 mt-1 text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity"
+              className={`flex items-center space-x-1 mt-1 text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity ${
+                isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'
+              }`}
             >
               <Clock className="w-3 h-3" />
               <span>{formatTime(message.timestamp)}</span>

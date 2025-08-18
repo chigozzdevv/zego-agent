@@ -74,11 +74,11 @@ async function registerAgent(): Promise<string> {
       Url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
       ApiKey: CONFIG.DASHSCOPE_API_KEY || 'zego_test',
       Model: 'qwen-plus',
-      SystemPrompt: 'You are a helpful AI assistant. Be concise and friendly. Respond in the same language as the user.',
+      SystemPrompt: 'You are a helpful AI assistant. Be concise and friendly. Respond in the same language as the user. Keep responses under 100 words for better voice conversation flow.',
       Temperature: 0.7,
       TopP: 0.9,
       Params: { 
-        max_tokens: 300
+        max_tokens: 200
       }
     },
     TTS: {
@@ -90,15 +90,28 @@ async function registerAgent(): Promise<string> {
         payload: {
           model: 'cosyvoice-v2',
           parameters: {
-            voice: 'longxiaochun_v2'
+            voice: 'longxiaochun_v2',
+            speed: 1.0,
+            volume: 0.8
           }
         }
-      }
+      },
+      FilterText: [
+        {
+          BeginCharacters: '(',
+          EndCharacters: ')'
+        },
+        {
+          BeginCharacters: '[',
+          EndCharacters: ']'
+        }
+      ]
     },
     ASR: {
-      HotWord: 'ZEGOCLOUD|10,AI|8,Assistant|8',
-      VADSilenceSegmentation: 800,
-      PauseInterval: 1200
+      HotWord: 'ZEGOCLOUD|10,AI|8,Assistant|8,money|10,help|8',
+      // Better ASR settings for complete sentence capture
+      VADSilenceSegmentation: 1500,  // Wait 1.5 seconds of silence before ending
+      PauseInterval: 2000  // Concatenate speech within 2 seconds
     }
   }
   
@@ -139,7 +152,7 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
       MessageHistory: {
         SyncMode: 1,
         Messages: [],
-        WindowSize: 20
+        WindowSize: 10  // Keep shorter history for better performance
       },
       CallbackConfig: {
         ASRResult: 1,
@@ -150,7 +163,7 @@ app.post('/api/start', async (req: Request, res: Response): Promise<void> => {
         AgentSpeakAction: 1
       },
       AdvancedConfig: {
-        InterruptMode: 0
+        InterruptMode: 0  // Enable natural voice interruption
       }
     }
     
@@ -287,4 +300,4 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction): void =>
 
 app.listen(CONFIG.PORT, () => {
   console.log(`Server running on port ${CONFIG.PORT}`)
-}) 
+})
