@@ -85,7 +85,7 @@ async function registerAgent(): Promise<string> {
       Vendor: 'CosyVoice',
       Params: {
         app: { 
-          api_key: CONFIG.DASHSCOPE_API_KEY || 'zego_test'
+          api_key:'zego_test'
         },
         payload: {
           model: 'cosyvoice-v2',

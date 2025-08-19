@@ -14,6 +14,7 @@ interface ChatContainerProps {
 
 export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConversation }: ChatContainerProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
   const { 
     messages, 
     isLoading, 
@@ -35,6 +36,30 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
+
+  // Setup audio element properties
+  useEffect(() => {
+    if (audioRef.current) {
+      const audio = audioRef.current
+      audio.volume = 0.8
+      audio.muted = false
+      audio.preload = 'auto'
+      
+      // Handle audio events for debugging
+      audio.addEventListener('loadstart', () => console.log('🔊 Audio loading started'))
+      audio.addEventListener('canplay', () => console.log('🔊 Audio ready to play'))
+      audio.addEventListener('play', () => console.log('🔊 Audio playback started'))
+      audio.addEventListener('error', (e) => console.error('❌ Audio error:', e))
+      
+      // Cleanup
+      return () => {
+        audio.removeEventListener('loadstart', () => {})
+        audio.removeEventListener('canplay', () => {})
+        audio.removeEventListener('play', () => {})
+        audio.removeEventListener('error', () => {})
+      }
+    }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
@@ -106,14 +131,12 @@ export const ChatContainer = ({ conversationId, onConversationUpdate, onNewConve
       className="flex flex-col h-full bg-gray-50"
     >
       <audio 
+        ref={audioRef}
         id="ai-audio-output" 
         autoPlay 
         style={{ display: 'none' }}
         controls={false}
         playsInline
-        muted={false}
-        volume={0.8}
-        preload="auto"
       />
 
       <motion.div 
