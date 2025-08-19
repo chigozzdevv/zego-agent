@@ -110,6 +110,7 @@ export const useChat = () => {
   const messageHandlerSetup = useRef(false)
   const cleanupFunctions = useRef<(() => void)[]>([])
   const currentConversationRef = useRef<string | null>(null)
+  const streamingMessages = useRef(new Map<string, string>())
 
   const defaultVoiceSettings: VoiceSettings = {
     isEnabled: true,
@@ -123,6 +124,7 @@ export const useChat = () => {
     cleanupFunctions.current = []
     processedMessageIds.current.clear()
     messageHandlerSetup.current = false
+    streamingMessages.current.clear()
   }, [])
 
   const addMessageSafely = useCallback((message: Message, conversationId: string) => {
@@ -147,6 +149,7 @@ export const useChat = () => {
       dispatch({ type: 'SET_CONVERSATION', payload: conv })
       dispatch({ type: 'SET_MESSAGES', payload: [...conv.messages] })
       processedMessageIds.current.clear()
+      streamingMessages.current.clear()
       
       conv.messages.forEach(msg => {
         processedMessageIds.current.add(msg.id)
@@ -182,7 +185,6 @@ export const useChat = () => {
         const { Cmd, Data: msgData } = data
         console.log('Room message received:', { Cmd, msgData })
         
-        // Only process messages for current conversation
         if (currentConversationRef.current !== conv.id) {
           console.log('Ignoring message for different conversation')
           return
@@ -217,26 +219,41 @@ export const useChat = () => {
           if (!content || !MessageId) return
 
           if (EndFlag) {
-            const aiMessage: Message = {
-              id: MessageId,
-              content,
-              sender: 'ai',
-              timestamp: Date.now(),
-              type: 'text'
-            }
+            const currentStreaming = streamingMessages.current.get(MessageId) || ''
+            const finalContent = currentStreaming + content
             
-            addMessageSafely(aiMessage, conv.id)
-            dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
-          } else {
             dispatch({ type: 'UPDATE_MESSAGE', payload: {
               id: MessageId,
-              updates: { content, isStreaming: true }
+              updates: { 
+                content: finalContent, 
+                isStreaming: false 
+              }
             }})
+            
+            streamingMessages.current.delete(MessageId)
+            dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
+            
+            try {
+              const finalMessage: Message = {
+                id: MessageId,
+                content: finalContent,
+                sender: 'ai',
+                timestamp: Date.now(),
+                type: 'text'
+              }
+              memoryService.addMessage(conv.id, finalMessage)
+            } catch (error) {
+              console.error('Failed to save final message to memory:', error)
+            }
+          } else {
+            const currentStreaming = streamingMessages.current.get(MessageId) || ''
+            const updatedContent = currentStreaming + content
+            streamingMessages.current.set(MessageId, updatedContent)
             
             if (!processedMessageIds.current.has(MessageId)) {
               const streamingMessage: Message = {
                 id: MessageId,
-                content,
+                content: updatedContent,
                 sender: 'ai',
                 timestamp: Date.now(),
                 type: 'text',
@@ -245,6 +262,11 @@ export const useChat = () => {
               
               processedMessageIds.current.add(MessageId)
               dispatch({ type: 'ADD_MESSAGE', payload: streamingMessage })
+            } else {
+              dispatch({ type: 'UPDATE_MESSAGE', payload: {
+                id: MessageId,
+                updates: { content: updatedContent, isStreaming: true }
+              }})
             }
             
             dispatch({ type: 'SET_AGENT_STATUS', payload: 'speaking' })
@@ -252,6 +274,7 @@ export const useChat = () => {
         }
       } catch (error) {
         console.error('Error handling room message:', error)
+        dispatch({ type: 'SET_AGENT_STATUS', payload: 'idle' })
       }
     }
 
@@ -423,10 +446,8 @@ export const useChat = () => {
     dispatch({ type: 'SET_ERROR', payload: null })
   }, [])
 
-  // Simplified effect to handle conversation changes
   useEffect(() => {
     const handleConversationChange = async () => {
-      // Only act if there's an actual change in conversation ID
       if (currentConversationRef.current === (state.conversation?.id || null)) {
         return
       }

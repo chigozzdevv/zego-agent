@@ -42,7 +42,6 @@ export class ZegoService {
   }
 
   private setupAudioElement(): void {
-    // Create or get audio element for AI voice output
     this.audioElement = document.getElementById('ai-audio-output') as HTMLAudioElement
     if (!this.audioElement) {
       this.audioElement = document.createElement('audio')
@@ -53,11 +52,9 @@ export class ZegoService {
       document.body.appendChild(this.audioElement)
     }
 
-    // Ensure audio can play
     this.audioElement.volume = 0.8
     this.audioElement.muted = false
 
-    // Handle audio events
     this.audioElement.addEventListener('loadstart', () => {
       console.log('🔊 Audio loading started')
     })
@@ -96,15 +93,20 @@ export class ZegoService {
       
       if (updateType === 'ADD' && streamList.length > 0) {
         for (const stream of streamList) {
+          const userStreamId = this.currentUserId ? `${this.currentUserId}_stream` : null
+          
+          if (userStreamId && stream.streamID === userStreamId) {
+            console.log('🚫 Skipping user\'s own stream:', stream.streamID)
+            continue
+          }
+
           try {
-            console.log('🔗 Playing agent stream:', stream.streamID)
+            console.log('🔗 Playing AI agent stream:', stream.streamID)
             
-            // Start playing the stream
             const mediaStream = await this.zg!.startPlayingStream(stream.streamID)
             if (mediaStream) {
               console.log('✅ Media stream received:', mediaStream)
               
-              // Create remote view and connect to audio element
               const remoteView = await this.zg!.createRemoteStreamView(mediaStream)
               if (remoteView && this.audioElement) {
                 try {
@@ -114,13 +116,11 @@ export class ZegoService {
                   })
                   console.log('✅ AI agent audio connected and playing')
                   
-                  // Ensure audio is not muted
                   this.audioElement.muted = false
                   this.audioElement.volume = 0.8
                 } catch (playError) {
                   console.error('❌ Failed to play audio through element:', playError)
                   
-                  // Fallback: try to play directly
                   try {
                     if (this.audioElement) {
                       this.audioElement.srcObject = mediaStream
@@ -215,7 +215,7 @@ export class ZegoService {
       const localStream = await this.zg.createZegoStream({
         camera: { 
           video: false, 
-          audio: true // ZEGO handles audio processing internally
+          audio: true
         }
       })
 
@@ -288,7 +288,6 @@ export class ZegoService {
       
       await this.zg.logoutRoom()
       
-      // Clean up audio
       if (this.audioElement) {
         this.audioElement.srcObject = null
       }
